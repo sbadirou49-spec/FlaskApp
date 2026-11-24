@@ -9,9 +9,9 @@ on:
       - main
 
 jobs:
-  build:
+  # Job 1 : Exécution des tests unitaires (en parallèle avec docker-build)
+  unit-tests:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,6 +30,60 @@ jobs:
         run: |
           pytest
 
+      - name: Send email notification on test failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ://gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "CI Pipeline Failed: Unit tests failed on ${{ github.repository }}"
+          to: your-email@example.com
+          from: GitHub Actions
+          body: "The unit tests failed on commit ${{ github.sha }}. Check the Actions tab for logs."
+
+  # Job 2 : Construction de l'image Docker (en parallèle avec unit-tests)
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Build Docker image
         run: |
-          docker build -t flask-app .
+          docker build -t flask-app:latest .
+
+  # Job 3 : Push vers deux registres (uniquement si les tests et le build réussissent)
+  docker-push:
+    needs: [unit-tests, docker-build]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t flask-app:latest .
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Log in to Private Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and Push to Docker Hub and Private Registry
+        run: |
+          docker tag flask-app:latest ${{ secrets.DOCKER_USERNAME }}/flask-app:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/flask-app:latest
+
+          docker tag flask-app:latest ghcr.io/${{ github.repository_owner }}/flask-app:latest
+          docker push ghcr.io/${{ github.repository_owner }}/flask-app:latest
