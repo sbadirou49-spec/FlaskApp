@@ -8,8 +8,11 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  # Job 1 : Exécution des tests unitaires (en parallèle avec docker-build)
   unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -43,7 +46,6 @@ jobs:
           from: GitHub Actions
           body: "The unit tests failed on commit ${{ github.sha }}. Check the Actions tab for logs."
 
-  # Job 2 : Construction de l'image Docker (en parallèle avec unit-tests)
   docker-build:
     runs-on: ubuntu-latest
     steps:
@@ -54,7 +56,6 @@ jobs:
         run: |
           docker build -t flask-app:latest .
 
-  # Job 3 : Push vers deux registres (uniquement si les tests et le build réussissent)
   docker-push:
     needs: [unit-tests, docker-build]
     if: success()
